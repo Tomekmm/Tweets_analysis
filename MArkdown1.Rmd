@@ -1,0 +1,604 @@
+---
+title: "Text_Mining - Tweety_Donald_Hilary"
+author: "Tomasz Małkowski"
+date: '2022-09-07'
+output:
+  beamer_presentation: default
+  ioslides_presentation: default
+---
+
+# Analiza sentymenty ------------------------------------------------------
+# Projekt ma na celu przeprowadzenie analizy sentymentu dla tweetów 
+# Hilary Clinton oraz Donalda Trumpa w kampanii prezydeckiej 2016.
+# Zbiór danych pochodzi z kaggle:
+# https://www.kaggle.com/datasets/benhamner/clinton-trump-tweets?resource=download
+
+# Analiza sentymentu pozwoli zbadać  nacechowanie emocjonalne danych 
+# w oparciu o wcześniej utworzony słownik.
+
+
+# 1) czyszczenie tekstu - przygotowanie danych i tokenizacja
+
+# lista potrzebnych pakietów
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(stopwords)
+library(hunspell)
+library(textstem)
+library(dplyr)
+library(stringi)
+```
+
+
+```{r}
+library(readr)
+tweet <- read_csv("C:/Users/Tomek/Documents/AGH/II semestr/text mining/tweets.csv", 
+                  col_names =F,
+                  locale = readr::locale(encoding = "UTF-8"))
+```
+```{r}
+print(tweet)
+glimpse(tweet)
+```
+
+```{r}
+# usuwanie kolumn 5-28
+tweet3 <- tweet[, -c(5:28)] 
+head(tweet3)
+```
+
+
+
+#tokenizacja danych z wykorzystaniem pakietu "tidytext"
+# Tokenizacja, czyli dzielenie tekstu na mniejsze jednostki (słowa). Znaki interpunkcyjne 
+# zostają usunięte, wielkie litery zostają zamienione na małe
+```{r}
+# pierwszy wiersz
+tweet3[1,]
+# usuwanie I wiersza
+tweet3 <- tweet3[-c(1),] 
+
+head(tweet3)
+```
+```{r}
+unique(tweet3$X2)
+tidy_tweet_T <- tweet3 %>%  filter(X2=="realDonaldTrump") %>%  unnest_tokens(word,X3) 
+view(tidy_tweet_T)
+unique(tidy_tweet_T$X2)
+head(tidy_tweet_T)
+```
+
+
+ 
+```{r}
+#najczęściej występujące słowa
+tweet_tok <- tidy_tweet_T %>%  
+  count(word) %>%  
+  arrange(desc(n))  
+
+head(tweet_tok)
+```
+
+
+
+#usuwanie stopwords - słów które nie nosią sentymentu z  pomocą funkcji anti_join()
+
+```{r}
+
+# wbudowanie angielskie słowniki z pakietu tidy_text
+stop_words
+
+# Mamy kilka leksykon?w
+stop_words %>% 
+  count(lexicon)
+```
+
+
+```{r}
+get_stopwords()
+get_stopwords(source="smart")
+
+```
+```{r}
+get_stopwords(source="snowball")
+#oddzielenie stop words'ów od naszej baza tweet'ów
+tweet_tok2 <- tidy_tweet_T %>%
+  anti_join(stop_words)
+tweet_tok2
+tweet_tok2 %>%
+  count(word) %>%  
+  arrange(desc(n)) 
+
+  head(tweet_tok2)
+```
+
+
+
+#wizualizacja
+```{r}
+library(ggplot2)
+
+tweet_tok2 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip()
+```
+
+# Wśród najczęstszych słów występują takie wyrażenia jak: 
+# t.co, https, trump2016, realdonaldtrump, amp, hillary
+# które nie wnoszą nic do analizy sentymentu ( nie są ujęte w słownikach).
+```{r}
+### Tym samym potrzeba utworzyć własny zbiór stop wordów
+custom_stop_words <- tribble(
+  ~word,    ~lexicon, 
+  "https", "" , 
+  "amp", "" , 
+  "t.co", "" , 
+  "makeamericagreatagain", "" , 
+  "trump", "" , 
+  "hillary", "" , 
+  "trump2016", "" , 
+  "realdonaldtrump",""  
+) 
+
+stop_words2 <- stop_words %>% 
+  bind_rows(custom_stop_words)
+#i ponownie usuwamy stop words
+
+tweet_tok4 <- tidy_tweet_T %>%
+  anti_join(stop_words2) 
+```
+
+```{r}
+
+#zwizualizujmy
+
+tweet_tok4 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+tweet_tok4 %>%
+  count(word, sort = TRUE) 
+```
+  
+# 2) Lematyzacja - doprowadzanie słów do ich podstawowej postaci
+  
+#zastosowano lemantyzator z pakietu hunspell 
+```{r}
+
+library(hunspell)
+tweet_tok5= tweet_tok4 %>%
+  mutate(word2 = hunspell_stem(word))
+tweet_tok5
+
+```
+
+
+```{r}
+# usuwanie kolejnych stop words'y i zapis do tweet_tok6
+custom_stop_words2 <- tribble(
+  ~word,    ~lexicon, 
+  "character(0)", "",
+  "donald", "",
+  "hillary", "",
+  "clinton", "",
+  "trump's", "",
+  "hilary's",""
+) 
+
+stop_words2 <- stop_words %>% 
+  bind_rows(custom_stop_words2)
+  
+
+tweet_tok6 <- tweet_tok5 %>%
+  anti_join(stop_words2) 
+
+```
+
+
+# wizualizacja
+```{r}
+tweet_tok6 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+tweet_tok6 %>%
+  count(word, sort = TRUE) 
+```
+
+#inna wizualizacja - chmura słów
+```{r}
+
+library(RColorBrewer)
+library(wordcloud) 
+
+word_N = tweet_tok6 %>% 
+  count(word) 
+
+wordcloud( 
+  words = word_N$word,  
+  freq = word_N$n,  
+  max.words = 100, 
+  random.order = F,
+  rot.per=0.3, 
+  colors="darkorange"
+) 
+```
+
+# 3) Analiza sentymentu
+```{r}
+# potrzebne biblioteki
+library(tidytext)
+library(textdata)
+
+# załadowanie leksykonu bing
+bing<-get_sentiments("bing")
+```
+
+```{r}
+
+# liczba słów negatywnych i pozytywnych w leksykonach.
+get_sentiments("bing") %>%  
+  count(sentiment) 
+```
+
+```{r}
+# analiza sentymentu tweetów z leksykonem bing
+tweet_tok4_bing <-  tweet_tok6 %>%
+  inner_join(get_sentiments("bing"))
+
+#i co otrzymujemy
+tweet_tok4_bing%>%  
+  count(sentiment) 
+
+# jakie słowa wchodzą w skład sentymentu
+tweet_tok4_bing %>%  
+  count(word, sentiment) %>% 
+  arrange(desc(n)) 
+```
+
+```{r}
+#wizualizacja sentymentu
+tweet_tok4_bingW<- tweet_tok4_bing  %>%  
+  filter(sentiment %in% c("positive", "negative"))
+
+czest_bing <- tweet_tok4_bingW%>% 
+  count(word, sentiment) %>%  
+  group_by(sentiment) %>% 
+  top_n(15, n) %>%  
+  ungroup() %>%  
+  mutate( 
+    word2 = fct_reorder(word, n) 
+  ) 
+
+ggplot(czest_bing, aes(x = word2, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ sentiment, scales = "free") + 
+  coord_flip() + 
+  labs( 
+    title = "Sentiment Word: Donald Trump", 
+    x = "Words" 
+  ) 
+```
+
+# Wniosek:
+# Wsród nagatywnych słów przeważa słowo crooked (występujące ponad 150 razy) odnoszące się do kłamstwa, przekrętu.
+# Donald Trump często odwoływał się do oszust finansowych Hillary Clinton, nieuczciwości (dishonest) oraz zła (słowo bad). 
+
+```{r}
+### kolejna wizualizacja - 
+# chmura słów z sentymentem
+# czerwone - negatywne
+# niebieskie - pozytywne
+library(reshape2)
+tweet_tok6 %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "blue"),
+                   max.words = 150)
+
+```
+
+################################################################################
+################################################################################
+###############################################################################
+### analiza tweetów Hilary Clinton ####
+
+```{r}
+print(tweet)
+glimpse(tweet)
+```
+
+```{r}
+# usuwanie kolumn 5-28
+tweet3 <- tweet[, -c(5:28)] 
+head(tweet3)
+```
+
+
+
+#tokenizacja danych z wykorzystaniem pakietu "tidytext"
+# Tokenizacja, czyli dzielenie tekstu na mniejsze jednostki (słowa). Znaki interpunkcyjne 
+# zostają usunięte, wielkie litery zostają zamienione na małe
+```{r}
+# pierwszy wiersz
+tweet3[1,]
+# usuwanie I wiersza
+tweet3 <- tweet3[-c(1),] 
+
+head(tweet3)
+```
+```{r}
+unique(tweet3$X2)
+tidy_tweet_T <- tweet3 %>%  filter(X2=="HillaryClinton") %>%  unnest_tokens(word,X3) 
+view(tidy_tweet_T)
+unique(tidy_tweet_T$X2)
+head(tidy_tweet_T)
+```
+
+
+ 
+```{r}
+#najczęściej występujące słowa
+tweet_tok <- tidy_tweet_T %>%  
+  count(word) %>%  
+  arrange(desc(n))  
+
+head(tweet_tok)
+```
+
+#usuwanie stopwords - słów które nie nosią sentymentu z  pomocą funkcji anti_join()
+
+```{r}
+
+# wbudowanie angielskie słowniki z pakietu tidy_text
+stop_words
+
+# Mamy kilka leksykon?w
+stop_words %>% 
+  count(lexicon)
+```
+
+
+```{r}
+get_stopwords()
+get_stopwords(source="smart")
+
+```
+```{r}
+get_stopwords(source="snowball")
+#oddzielenie stop words'ów od naszej baza tweet'ów
+tweet_tok2 <- tidy_tweet_T %>%
+  anti_join(stop_words)
+tweet_tok2
+tweet_tok2 %>%
+  count(word) %>%  
+  arrange(desc(n)) 
+
+  head(tweet_tok2)
+```
+
+
+
+#wizualizacja
+```{r}
+library(ggplot2)
+
+tweet_tok2 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  coord_flip()
+```
+
+# Wśród najczęstszych słów występują takie wyrażenia jak: 
+# t.co, https, trump2016, realdonaldtrump, amp, hillary
+# które nie wnoszą nic do analizy sentymentu ( nie są ujęte w słownikach).
+```{r}
+### Tym samym potrzeba utworzyć własny zbiór stop wordów
+custom_stop_words <- tribble(
+  ~word,    ~lexicon, 
+  "https", "" , 
+  "amp", "" , 
+  "t.co", "" , 
+  "makeamericagreatagain", "" , 
+  "trump", "" , 
+  "hillary", "" , 
+  "trump2016", "" , 
+  "realdonaldtrump",""  
+) 
+
+stop_words2 <- stop_words %>% 
+  bind_rows(custom_stop_words)
+#i ponownie usuwamy stop words
+
+tweet_tok4 <- tidy_tweet_T %>%
+  anti_join(stop_words2) 
+```
+
+```{r}
+
+#zwizualizujmy
+
+tweet_tok4 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+tweet_tok4 %>%
+  count(word, sort = TRUE) 
+```
+  
+# 2) Lematyzacja - doprowadzanie słów do ich podstawowej postaci
+  
+#zastosowano lemantyzator z pakietu hunspell 
+```{r}
+
+library(hunspell)
+tweet_tok5= tweet_tok4 %>%
+  mutate(word2 = hunspell_stem(word))
+tweet_tok5
+
+```
+
+
+```{r}
+# usuwanie kolejnych stop words'y i zapis do tweet_tok6
+custom_stop_words2 <- tribble(
+  ~word,    ~lexicon, 
+  "character(0)", "",
+  "donald", "",
+  "hillary", "",
+  "clinton", "",
+  "trump's", "",
+  "hilary's",""
+) 
+
+stop_words2 <- stop_words %>% 
+  bind_rows(custom_stop_words2)
+  
+
+tweet_tok6 <- tweet_tok5 %>%
+  anti_join(stop_words2) 
+
+```
+
+
+# wizualizacja
+```{r}
+tweet_tok6 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 100) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+
+tweet_tok6 %>%
+  count(word, sort = TRUE) 
+```
+
+#inna wizualizacja - chmura słów
+```{r}
+
+library(RColorBrewer)
+library(wordcloud) 
+
+word_N = tweet_tok6 %>% 
+  count(word) 
+
+wordcloud( 
+  words = word_N$word,  
+  freq = word_N$n,  
+  max.words = 100, 
+  random.order = F,
+  rot.per=0.3, 
+  colors="darkorange"
+) 
+```
+
+# 3) Analiza sentymentu
+```{r}
+# potrzebne biblioteki
+library(tidytext)
+library(textdata)
+
+# załadowanie leksykonu bing
+bing<-get_sentiments("bing")
+```
+
+```{r}
+
+# liczba słów negatywnych i pozytywnych w leksykonach.
+get_sentiments("bing") %>%  
+  count(sentiment) 
+```
+
+```{r}
+# analiza sentymentu tweetów z leksykonem bing
+tweet_tok4_bing <-  tweet_tok6 %>%
+  inner_join(get_sentiments("bing"))
+
+#i co otrzymujemy
+tweet_tok4_bing%>%  
+  count(sentiment) 
+
+# jakie słowa wchodzą w skład sentymentu
+tweet_tok4_bing %>%  
+  count(word, sentiment) %>% 
+  arrange(desc(n)) 
+```
+
+```{r}
+#wizualizacja sentymentu
+tweet_tok4_bingW<- tweet_tok4_bing  %>%  
+  filter(sentiment %in% c("positive", "negative"))
+
+czest_bing <- tweet_tok4_bingW%>% 
+  count(word, sentiment) %>%  
+  group_by(sentiment) %>% 
+  top_n(15, n) %>%  
+  ungroup() %>%  
+  mutate( 
+    word2 = fct_reorder(word, n) 
+  ) 
+
+ggplot(czest_bing, aes(x = word2, y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~ sentiment, scales = "free") + 
+  coord_flip() + 
+  labs( 
+    title = "Sentiment Word: Hillary Clinton", 
+    x = "Words" 
+  ) 
+```
+
+# Wniosek:
+# Negatywne jak i pozytywne słowa mają bardziej równomierny rozkład częstości niż u
+# Donalda Trumpa. Hilary Clinton odwołuje się do nienawiści (hate), niebezpieczeństwa (dangerous),strachu (fear), rasizmu (racism).
+# Przez to maluje obraz prezydenta Trumpa jako niezrównoważonego rasiste i jednocześnie "puszcza oko" to afroamerykanów oraz 
+# grup wykluczonych w społeczeństwie (obiecując lepszą opiekę socialną).
+# Dodatkowo najczęściej pojawiło się słowo dług (debt) uderzające w cienie polityki gospodarczej Trumpa.  
+# Na koniec można zwrócić uwagę na antagonizmy wśród wyszukanych słów z sentymentem.
+# Słowo hate używate 45 razy rekompensuje słowo love użyte 56 razy. 
+# Attack (22 razy) oraz racism (17 razy) w przeciwieństwie do proud (51) i respect (21), 
+# Crisis (20) do progress (23).
+
+```{r}
+### kolejna wizualizacja - 
+# chmura słów z sentymentem
+# czerwone - negatywne
+# niebieskie - pozytywne
+library(reshape2)
+tweet_tok6 %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("red", "blue"),
+                   max.words = 50)
+
+
